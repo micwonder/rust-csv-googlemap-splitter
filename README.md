@@ -1,6 +1,5 @@
 Sure, here is a sample `README.md` file for your Rust project:
 
-```markdown
 # CSV File Processor
 
 This project processes a large CSV file by splitting it into multiple smaller files based on a specified number of rows per file. It uses asynchronous file operations and includes progress reporting with a progress bar.
@@ -34,7 +33,7 @@ This project processes a large CSV file by splitting it into multiple smaller fi
    ```toml
    [dependencies]
    tokio = { version = "1", features = ["full"] }
-   indicatif = "0.16"
+   indicatif = "0.17.8"
    ```
 
 3. Build the project:
