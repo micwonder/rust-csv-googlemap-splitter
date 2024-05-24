@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+clip = "0.1.1"
 csv = "1.3.0"
 futures = "0.3.30"
 indicatif = "0.17.8"
 rayon = "1.10.0"
 tokio = { version = "1.37.0", features = ["full"] }
+tokio-util = "0.7.11"
