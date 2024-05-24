@@ -141,10 +141,15 @@ async fn save_batch_to_file(lines: Vec<String>) -> Result<(), Box<dyn Error>> {
     let rect_number = lines.len() / (RECT_SIZE + 1) / RECT_SIZE;
 
     if lines.len() > 0 {
+        let mut processing_start_time = Instant::now();
+
         let mut rect_batches: Vec<Vec<String>> = Vec::with_capacity(rect_number);
         for _ in 0..rect_number {
             rect_batches.push(Vec::new());
         }
+
+        println!("Time initialization: {:?}", processing_start_time.elapsed());
+        processing_start_time = Instant::now();
 
         for col in 0..rect_number {
             for row in 0..RECT_SIZE + 1 {
@@ -158,7 +163,11 @@ async fn save_batch_to_file(lines: Vec<String>) -> Result<(), Box<dyn Error>> {
             }
         }
 
+        println!("Time extend: {:?}", processing_start_time.elapsed());
+        
         for batch in &rect_batches {
+            processing_start_time = Instant::now();
+
             let first_line: Vec<&str> = batch[0].split_whitespace().collect::<Vec<&str>>();
             let last_line: Vec<&str> = batch.last().unwrap().split_whitespace().collect::<Vec<&str>>();
             let file_name = format!(
@@ -186,10 +195,14 @@ async fn save_batch_to_file(lines: Vec<String>) -> Result<(), Box<dyn Error>> {
                     content.push_str(&reordered_line);
                 }
             }
+            println!("Time push str: {:?}", processing_start_time.elapsed());
+            processing_start_time = Instant::now();
 
             let mut output_file = File::create(file_name).await?;
             output_file.write_all(content.as_bytes()).await?;
             output_file.flush().await?;
+
+            println!("Time writing: {:?}", processing_start_time.elapsed());
         }
     }
 
