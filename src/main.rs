@@ -7,7 +7,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 const ROWS_LINE: usize = 3600;
 const RECT_SIZE: usize = 20;
 const ROWS_PER_FILE: usize = ROWS_LINE * RECT_SIZE;         // 72000 rows at once
+// const NUM_BATCH_LINES: usize = (RECT_SIZE + 1) * (RECT_SIZE + 1);
+// const NUM_CHARACTERS_PER_LINE: usize = 21 + 1 + 21 + 1 + 10 + 1;  // Longitude, Space, Latitude, Space, Altitude, Newline
+// const ESTIMATED_CAPACITY: usize = NUM_BATCH_LINES * NUM_CHARACTERS_PER_LINE;
 // const BUFFER_SIZE: usize = 10 * 1024 * 1024;    // 10MB buffer size
+
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>{
@@ -141,68 +146,72 @@ async fn save_batch_to_file(lines: Vec<String>) -> Result<(), Box<dyn Error>> {
     let rect_number = lines.len() / (RECT_SIZE + 1) / RECT_SIZE;
 
     if lines.len() > 0 {
-        let mut processing_start_time = Instant::now();
-
-        let mut rect_batches: Vec<Vec<String>> = Vec::with_capacity(rect_number);
-        for _ in 0..rect_number {
-            rect_batches.push(Vec::new());
-        }
-
-        println!("Time initialization: {:?}", processing_start_time.elapsed());
-        processing_start_time = Instant::now();
-
+        let mut max_elapsed_time = 0;
+        
         for col in 0..rect_number {
+            // let mut rect_batch = String::with_capacity(ESTIMATED_CAPACITY);
+            let mut rect_batch = String::new();
+            let mut first_line = String::new();
+            let mut last_line = String::new();
+
+            // push_str(lines) to rect_batch(content) and then save it to file
+            // Number of files will be RECT_SIZE
             for row in 0..RECT_SIZE + 1 {
-                let start_idx = col * 20;
-                let end_idx = (col + 1) * 20;
-                if col == rect_number - 1 {
-                    rect_batches[col].extend(lines[start_idx + row * ROWS_LINE..end_idx + row * ROWS_LINE].to_vec());
+                let start_idx = col * RECT_SIZE + row * ROWS_LINE;
+                let end_idx = start_idx + RECT_SIZE;
+
+                let lines_to_add = if col == rect_number - 1 {
+                    &lines[start_idx..end_idx]
                 } else {
-                    rect_batches[col].extend(lines[start_idx + row * ROWS_LINE..end_idx + 1 + row * ROWS_LINE].to_vec());
+                    &lines[start_idx..end_idx + 1]
+                };
+
+                // Iterating by row, to generate a content
+                let mut i = 0;
+                for line in lines_to_add {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 3 {
+                        // Reorder the parts of longitude, latitude, altitude format
+                        let reordered_line = format!(
+                            "{} {} {}\n",
+                            parts[1],
+                            parts[0],
+                            parts[2],
+                        );
+                        // unsafe { rect_batch.as_mut_vec().extend((&reordered_line).as_bytes()) };
+                        rect_batch.push_str(&reordered_line);
+
+                        if row == 0 && i == 0 {
+                            first_line = line.clone();
+                        }
+                        if row == RECT_SIZE && i == lines_to_add.len() - 1 {
+                            last_line = line.clone();
+                        }
+                    }
+                    i += 1;
                 }
             }
-        }
 
-        println!("Time extend: {:?}", processing_start_time.elapsed());
-        
-        for batch in &rect_batches {
-            processing_start_time = Instant::now();
-
-            let first_line: Vec<&str> = batch[0].split_whitespace().collect::<Vec<&str>>();
-            let last_line: Vec<&str> = batch.last().unwrap().split_whitespace().collect::<Vec<&str>>();
+            // Generate the file name using first and last line
+            let first_parts: Vec<&str> = first_line.split_whitespace().collect();
+            let last_parts: Vec<&str> = last_line.split_whitespace().collect();
             let file_name = format!(
                 "dataset\\{}N_{}E_{}N_{}E.txt",
-                convert_to_dms(first_line[1])?,
-                convert_to_dms(first_line[0])?,
-                convert_to_dms(last_line[1])?,
-                convert_to_dms(last_line[0])?
+                convert_to_dms(first_parts[1])?,
+                convert_to_dms(first_parts[0])?,
+                convert_to_dms(last_parts[1])?,
+                convert_to_dms(last_parts[0])?
             );
 
-            // Generate content to save to file
-            let mut content = String::new();
-
-            
-            for line in batch {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 3 {
-                    // Reorder the parts of longitude, latitude, altitude format
-                    let reordered_line = format!(
-                        "{} {} {}\n",
-                        parts[1],
-                        parts[0],
-                        parts[2],
-                    );
-                    content.push_str(&reordered_line);
-                }
-            }
-            println!("Time push str: {:?}", processing_start_time.elapsed());
-            processing_start_time = Instant::now();
-
-            let mut output_file = File::create(file_name).await?;
-            output_file.write_all(content.as_bytes()).await?;
+            // Saving content to the file
+            let processing_start_time = Instant::now();
+            let mut output_file = File::create(&file_name).await?;
+            output_file.write_all(rect_batch.as_bytes()).await?;
             output_file.flush().await?;
-
-            println!("Time writing: {:?}", processing_start_time.elapsed());
+            if max_elapsed_time < processing_start_time.elapsed().as_millis() {
+                max_elapsed_time = processing_start_time.elapsed().as_millis();
+                println!("Max: {}", max_elapsed_time);
+            }
         }
     }
 
